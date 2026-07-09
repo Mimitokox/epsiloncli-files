@@ -1,15 +1,10 @@
-# EpsilonCLI - Skrypt Instalacyjny
-# Użycie (lokalne): powershell -ExecutionPolicy Bypass -File run.ps1
-# Użycie (z internetu): irm https://raw.githubusercontent.com/Mimitokox/epsiloncli-files/main/run.ps1 | iex
-
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 
-# Konfiguracja
 $installDir = "$env:LOCALAPPDATA\EpsilonCLI"
 $exePath = "$installDir\epsilon.exe"
 $downloadUrl = "https://raw.githubusercontent.com/Mimitokox/epsiloncli-files/main/cli.exe"
 
-# Ustalanie ścieżki do lokalnej kompilacji
 $localExePath = ""
 if ($PSScriptRoot) {
     $localExePath = Join-Path $PSScriptRoot "prod\epsilon.exe"
@@ -17,7 +12,6 @@ if ($PSScriptRoot) {
         $localExePath = Join-Path $PSScriptRoot "prod\cli.exe"
     }
 }
-# Jeśli nadal nie znaleziono, sprawdź relatywnie do bieżącego katalogu
 if (-not $localExePath -or -not (Test-Path $localExePath)) {
     if (Test-Path "prod\epsilon.exe") {
         $localExePath = (Resolve-Path "prod\epsilon.exe").Path
@@ -26,56 +20,120 @@ if (-not $localExePath -or -not (Test-Path $localExePath)) {
     }
 }
 
-# Funkcja rysująca nagłówek
 function Show-Header {
     Clear-Host
-    Write-Host "  ▐▛███▜▌   Epsilon CLI - Instalator" -ForegroundColor Cyan
-    Write-Host "  ▝▜█████▛▘  System: Windows" -ForegroundColor Cyan
-    Write-Host "    ▘▘ ▝▝" -ForegroundColor Cyan
-    Write-Host "==========================================" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "     ___ ___" -ForegroundColor White
+    Write-Host "    ||  ||  ||   " -NoNewline -ForegroundColor White
+    Write-Host "Epsilon CLI" -ForegroundColor Gray
+    Write-Host "    ||__||__||   " -NoNewline -ForegroundColor White
+    Write-Host "Instalator - Windows" -ForegroundColor DarkGray
+    Write-Host "     \_||_/" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  ------------------------------------------------" -ForegroundColor DarkGray
+    Write-Host ""
+}
+
+function Write-Step {
+    param([string]$Text)
+    Write-Host "  > " -NoNewline -ForegroundColor White
+    Write-Host $Text -ForegroundColor Gray
+}
+
+function Write-Ok {
+    param([string]$Text)
+    Write-Host "  + " -NoNewline -ForegroundColor White
+    Write-Host $Text -ForegroundColor Gray
+}
+
+function Write-Fail {
+    param([string]$Text)
+    Write-Host "  ! " -NoNewline -ForegroundColor White
+    Write-Host $Text -ForegroundColor DarkGray
+}
+
+function Get-RemoteFile {
+    param([string]$Url, [string]$Destination)
+
+    $request = [System.Net.HttpWebRequest]::Create($Url)
+    $request.UserAgent = "EpsilonCLI-Installer"
+    $request.Timeout = 30000
+    $response = $request.GetResponse()
+    $totalBytes = [double]$response.ContentLength
+    $responseStream = $response.GetResponseStream()
+    $fileStream = [System.IO.File]::Create($Destination)
+
+    $buffer = New-Object byte[] 262144
+    $downloaded = [double]0
+    $barWidth = 30
+    $lastPct = -1
+
+    try {
+        while (($bytesRead = $responseStream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+            $fileStream.Write($buffer, 0, $bytesRead)
+            $downloaded += $bytesRead
+
+            if ($totalBytes -gt 0) {
+                $pct = [int](($downloaded / $totalBytes) * 100)
+                if ($pct -ne $lastPct) {
+                    $lastPct = $pct
+                    $filled = [int](($downloaded / $totalBytes) * $barWidth)
+                    $empty = $barWidth - $filled
+                    Write-Host "`r  [" -NoNewline -ForegroundColor DarkGray
+                    Write-Host ([string]([char]0x2588) * $filled) -NoNewline -ForegroundColor White
+                    Write-Host ([string]([char]0x2591) * $empty) -NoNewline -ForegroundColor DarkGray
+                    Write-Host "] " -NoNewline -ForegroundColor DarkGray
+                    Write-Host ("{0,3}%  {1,5:N1} / {2,5:N1} MB" -f $pct, ($downloaded / 1MB), ($totalBytes / 1MB)) -NoNewline -ForegroundColor Gray
+                }
+            }
+        }
+    } finally {
+        $fileStream.Close()
+        $responseStream.Close()
+        $response.Close()
+    }
+    Write-Host ""
 }
 
 Show-Header
 
-# Ustalanie źródła instalacji
 $sourceLocal = $false
 if ($localExePath -and (Test-Path $localExePath)) {
-    Write-Host "[*] Wykryto lokalną kompilację w: $localExePath" -ForegroundColor Yellow
+    Write-Step "Wykryto lokalna kompilacje: $localExePath"
     $sourceLocal = $true
 }
 
-# Tworzenie katalogu docelowego
 if (-not (Test-Path $installDir)) {
-    Write-Host "[*] Tworzenie katalogu instalacyjnego: $installDir..." -ForegroundColor DarkGray
+    Write-Step "Tworzenie katalogu: $installDir"
     New-Item -ItemType Directory -Force -Path $installDir | Out-Null
 }
 
-# Kopiowanie lub pobieranie pliku EXE
 if ($sourceLocal) {
-    Write-Host "[*] Kopiowanie lokalnego pliku EXE..." -ForegroundColor Yellow
+    Write-Step "Kopiowanie lokalnego pliku..."
     Copy-Item -Path $localExePath -Destination $exePath -Force
 } else {
-    Write-Host "[*] Pobieranie pliku EXE z $downloadUrl..." -ForegroundColor Yellow
+    Write-Step "Pobieranie Epsilon CLI..."
+    Write-Host ""
     try {
-        Invoke-WebRequest -Uri $downloadUrl -OutFile $exePath -UseBasicParsing
+        Get-RemoteFile -Url $downloadUrl -Destination $exePath
     } catch {
-        Write-Host "[-] Błąd pobierania pliku Epsilon CLI!" -ForegroundColor Red
-        Write-Host $_.Exception.Message -ForegroundColor Red
+        Write-Host ""
+        Write-Fail "Blad pobierania pliku!"
+        Write-Fail $_.Exception.Message
         exit 1
     }
+    Write-Host ""
 }
 
-# Sprawdzenie czy plik istnieje i jest poprawny
 if (Test-Path $exePath) {
     $size = (Get-Item $exePath).Length / 1MB
-    Write-Host ("`n[+] Pomyślnie zapisano plik: $exePath ({0:N2} MB)" -f $size) -ForegroundColor Green
+    Write-Ok ("Zapisano: $exePath ({0:N2} MB)" -f $size)
 } else {
-    Write-Host "[-] Krytyczny błąd: Nie znaleziono pliku epsilon.exe po instalacji!" -ForegroundColor Red
+    Write-Fail "Nie znaleziono pliku epsilon.exe po instalacji!"
     exit 1
 }
 
-# Dodawanie do PATH
-Write-Host "[*] Konfiguracja zmiennych środowiskowych PATH..." -ForegroundColor DarkGray
+Write-Step "Konfiguracja PATH..."
 $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
 if ($userPath -notlike "*$installDir*") {
     $newPath = $userPath
@@ -84,19 +142,20 @@ if ($userPath -notlike "*$installDir*") {
     }
     $newPath += $installDir
     [Environment]::SetEnvironmentVariable("PATH", $newPath, "User")
-    # Aktualizacja PATH dla bieżącej sesji PowerShell
     $env:PATH = "$env:PATH;$installDir"
-    Write-Host "[+] Dodano $installDir do PATH użytkownika." -ForegroundColor Green
+    Write-Ok "Dodano $installDir do PATH."
 } else {
-    Write-Host "[*] Ścieżka $installDir jest już obecna w PATH." -ForegroundColor DarkGray
+    Write-Ok "Sciezka jest juz w PATH."
 }
 
-Write-Host "==========================================" -ForegroundColor Gray
-Write-Host "[+] Epsilon CLI został pomyślnie zainstalowany!" -ForegroundColor Green
 Write-Host ""
-Write-Host "    Aby zacząć korzystać, otwórz NOWY terminal i wpisz:" -ForegroundColor Cyan
-Write-Host "    epsilon" -ForegroundColor Yellow -NoNewline
-Write-Host " lub " -ForegroundColor White -NoNewline
-Write-Host "epsilon settings" -ForegroundColor Yellow
+Write-Host "  ------------------------------------------------" -ForegroundColor DarkGray
 Write-Host ""
-Write-Host "==========================================" -ForegroundColor Gray
+Write-Host "  + " -NoNewline -ForegroundColor White
+Write-Host "Epsilon CLI zainstalowany pomyslnie!" -ForegroundColor Gray
+Write-Host ""
+Write-Host "    Otworz NOWY terminal i wpisz:" -ForegroundColor DarkGray
+Write-Host "      epsilon" -NoNewline -ForegroundColor White
+Write-Host "  lub  " -NoNewline -ForegroundColor DarkGray
+Write-Host "epsilon settings" -ForegroundColor White
+Write-Host ""
