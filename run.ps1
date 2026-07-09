@@ -23,12 +23,11 @@ if (-not $localExePath -or -not (Test-Path $localExePath)) {
 function Show-Header {
     Clear-Host
     Write-Host ""
-    Write-Host "     ___ ___" -ForegroundColor White
-    Write-Host "    ||  ||  ||   " -NoNewline -ForegroundColor White
+    Write-Host "   ▐▛███▜▌    " -NoNewline -ForegroundColor White
     Write-Host "Epsilon CLI" -ForegroundColor Gray
-    Write-Host "    ||__||__||   " -NoNewline -ForegroundColor White
+    Write-Host "  ▝▜█████▛▘   " -NoNewline -ForegroundColor White
     Write-Host "Instalator - Windows" -ForegroundColor DarkGray
-    Write-Host "     \_||_/" -ForegroundColor White
+    Write-Host "    ▘▘ ▝▝" -ForegroundColor White
     Write-Host ""
     Write-Host "  ------------------------------------------------" -ForegroundColor DarkGray
     Write-Host ""
