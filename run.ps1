@@ -54,9 +54,19 @@ function Write-Fail {
 function Get-RemoteFile {
     param([string]$Url, [string]$Destination)
 
+    $bust = [Guid]::NewGuid().ToString("N")
+    if ($Url.Contains("?")) {
+        $Url = "$Url&t=$bust"
+    } else {
+        $Url = "$Url`?t=$bust"
+    }
+
     $request = [System.Net.HttpWebRequest]::Create($Url)
     $request.UserAgent = "EpsilonCLI-Installer"
     $request.Timeout = 30000
+    $request.CachePolicy = New-Object System.Net.Cache.RequestCachePolicy([System.Net.Cache.RequestCacheLevel]::NoCacheNoStore)
+    $request.Headers.Add("Cache-Control", "no-cache, no-store, must-revalidate")
+    $request.Headers.Add("Pragma", "no-cache")
     $response = $request.GetResponse()
     $totalBytes = [double]$response.ContentLength
     $responseStream = $response.GetResponseStream()
@@ -105,6 +115,22 @@ if ($localExePath -and (Test-Path $localExePath)) {
 if (-not (Test-Path $installDir)) {
     Write-Step "Tworzenie katalogu: $installDir"
     New-Item -ItemType Directory -Force -Path $installDir | Out-Null
+}
+
+$running = Get-Process -Name "epsilon" -ErrorAction SilentlyContinue
+if ($running) {
+    Write-Step "Zamykanie dzialajacego Epsilon CLI..."
+    $running | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 500
+}
+
+if (Test-Path $exePath) {
+    try {
+        Remove-Item -Path $exePath -Force -ErrorAction Stop
+    } catch {
+        Write-Fail "Nie mozna usunac starej wersji - zamknij Epsilon CLI i sprobuj ponownie."
+        exit 1
+    }
 }
 
 if ($sourceLocal) {
