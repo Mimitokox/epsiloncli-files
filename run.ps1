@@ -12,13 +12,6 @@ if ($PSScriptRoot) {
         $localExePath = Join-Path $PSScriptRoot "prod\cli.exe"
     }
 }
-if (-not $localExePath -or -not (Test-Path $localExePath)) {
-    if (Test-Path "prod\epsilon.exe") {
-        $localExePath = (Resolve-Path "prod\epsilon.exe").Path
-    } elseif (Test-Path "prod\cli.exe") {
-        $localExePath = (Resolve-Path "prod\cli.exe").Path
-    }
-}
 
 function Show-Header {
     Clear-Host
@@ -158,20 +151,35 @@ if (Test-Path $exePath) {
     exit 1
 }
 
+Write-Step "Usuwanie kolidujacych wersji..."
+$npmDir = Join-Path $env:APPDATA "npm"
+$conflicts = @("epsilon", "epsilon.cmd", "epsilon.ps1", "epsilon.bat")
+foreach ($name in $conflicts) {
+    $shim = Join-Path $npmDir $name
+    if (Test-Path $shim) {
+        try {
+            Remove-Item -Path $shim -Force -ErrorAction Stop
+            Write-Ok "Usunieto stary skrot npm: $name"
+        } catch {
+            Write-Fail "Nie mozna usunac skrotu: $name"
+        }
+    }
+}
+$npmLink = Join-Path $npmDir "node_modules\epsilon-cli"
+if (Test-Path $npmLink) {
+    try {
+        cmd /c rmdir "$npmLink" 2>$null
+    } catch {}
+}
+
 Write-Step "Konfiguracja PATH..."
 $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
-if ($userPath -notlike "*$installDir*") {
-    $newPath = $userPath
-    if (-not $newPath.EndsWith(';')) {
-        $newPath += ';'
-    }
-    $newPath += $installDir
-    [Environment]::SetEnvironmentVariable("PATH", $newPath, "User")
-    $env:PATH = "$env:PATH;$installDir"
-    Write-Ok "Dodano $installDir do PATH."
-} else {
-    Write-Ok "Sciezka jest juz w PATH."
-}
+$target = $installDir.TrimEnd('\')
+$parts = @($userPath -split ';' | Where-Object { $_ -and ($_.TrimEnd('\') -ne $target) })
+$newPath = (@($installDir) + $parts) -join ';'
+[Environment]::SetEnvironmentVariable("PATH", $newPath, "User")
+$env:PATH = "$installDir;$env:PATH"
+Write-Ok "Ustawiono $installDir na poczatku PATH."
 
 Write-Host ""
 Write-Host "  ------------------------------------------------" -ForegroundColor DarkGray
