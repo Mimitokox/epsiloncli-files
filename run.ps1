@@ -4,6 +4,7 @@ $ProgressPreference = 'SilentlyContinue'
 $installDir = "$env:LOCALAPPDATA\EpsilonCLI"
 $exePath = "$installDir\epsilon.exe"
 $downloadUrl = "https://raw.githubusercontent.com/Mimitokox/epsiloncli-files/main/cli.exe"
+$aliases = @("claudify", "claudee", "claudi", "claudfy")
 
 $localExePath = ""
 if ($PSScriptRoot) {
@@ -110,19 +111,23 @@ if (-not (Test-Path $installDir)) {
     New-Item -ItemType Directory -Force -Path $installDir | Out-Null
 }
 
-$running = Get-Process -Name "epsilon" -ErrorAction SilentlyContinue
+$procNames = @("epsilon") + $aliases
+$running = Get-Process -Name $procNames -ErrorAction SilentlyContinue
 if ($running) {
-    Write-Step "Zamykanie dzialajacego Epsilon CLI..."
+    Write-Step "Zamykanie dzialajacego CLI..."
     $running | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 500
 }
 
-if (Test-Path $exePath) {
-    try {
-        Remove-Item -Path $exePath -Force -ErrorAction Stop
-    } catch {
-        Write-Fail "Nie mozna usunac starej wersji - zamknij Epsilon CLI i sprobuj ponownie."
-        exit 1
+$allExe = @($exePath) + ($aliases | ForEach-Object { "$installDir\$_.exe" })
+foreach ($old in $allExe) {
+    if (Test-Path $old) {
+        try {
+            Remove-Item -Path $old -Force -ErrorAction Stop
+        } catch {
+            Write-Fail "Nie mozna usunac starej wersji - zamknij CLI i sprobuj ponownie."
+            exit 1
+        }
     }
 }
 
@@ -151,9 +156,23 @@ if (Test-Path $exePath) {
     exit 1
 }
 
+Write-Step "Tworzenie komend Claudify..."
+foreach ($alias in $aliases) {
+    $aliasPath = "$installDir\$alias.exe"
+    try {
+        Copy-Item -Path $exePath -Destination $aliasPath -Force -ErrorAction Stop
+        Write-Ok "Komenda: $alias"
+    } catch {
+        Write-Fail "Nie mozna utworzyc komendy: $alias"
+    }
+}
+
 Write-Step "Usuwanie kolidujacych wersji..."
 $npmDir = Join-Path $env:APPDATA "npm"
 $conflicts = @("epsilon", "epsilon.cmd", "epsilon.ps1", "epsilon.bat")
+foreach ($alias in $aliases) {
+    $conflicts += @($alias, "$alias.cmd", "$alias.ps1", "$alias.bat")
+}
 foreach ($name in $conflicts) {
     $shim = Join-Path $npmDir $name
     if (Test-Path $shim) {
@@ -191,4 +210,10 @@ Write-Host "    Otworz NOWY terminal i wpisz:" -ForegroundColor DarkGray
 Write-Host "      epsilon" -NoNewline -ForegroundColor White
 Write-Host "  lub  " -NoNewline -ForegroundColor DarkGray
 Write-Host "epsilon settings" -ForegroundColor White
+Write-Host ""
+Write-Host "    Wersja Claudify (osobne konto i providery):" -ForegroundColor DarkGray
+Write-Host "      claudify" -NoNewline -ForegroundColor White
+Write-Host "  (takze: " -NoNewline -ForegroundColor DarkGray
+Write-Host "claudee, claudi, claudfy" -NoNewline -ForegroundColor White
+Write-Host ")" -ForegroundColor DarkGray
 Write-Host ""
