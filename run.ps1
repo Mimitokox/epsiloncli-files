@@ -1,11 +1,15 @@
-$ErrorActionPreference = 'Stop'
-$ProgressPreference = 'SilentlyContinue'
+# EpsilonCLI - Skrypt Instalacyjny
+# Użycie (lokalne): powershell -ExecutionPolicy Bypass -File run.ps1
+# Użycie (z internetu): irm https://epsiloncode.pl/run.ps1 | iex
 
+$ErrorActionPreference = 'Stop'
+
+# Konfiguracja
 $installDir = "$env:LOCALAPPDATA\EpsilonCLI"
 $exePath = "$installDir\epsilon.exe"
-$downloadUrl = "https://raw.githubusercontent.com/Mimitokox/epsiloncli-files/main/cli.exe"
-$aliases = @("claudify", "claudee", "claudi", "claudfy")
+$downloadUrl = "https://epsiloncode.pl/cli.exe"
 
+# Ustalanie ścieżki do lokalnej kompilacji
 $localExePath = ""
 if ($PSScriptRoot) {
     $localExePath = Join-Path $PSScriptRoot "prod\epsilon.exe"
@@ -13,207 +17,103 @@ if ($PSScriptRoot) {
         $localExePath = Join-Path $PSScriptRoot "prod\cli.exe"
     }
 }
+# Jeśli nadal nie znaleziono, sprawdź relatywnie do bieżącego katalogu
+if (-not $localExePath -or -not (Test-Path $localExePath)) {
+    if (Test-Path "prod\epsilon.exe") {
+        $localExePath = (Resolve-Path "prod\epsilon.exe").Path
+    } elseif (Test-Path "prod\cli.exe") {
+        $localExePath = (Resolve-Path "prod\cli.exe").Path
+    }
+}
 
+# Funkcja rysująca nagłówek
 function Show-Header {
     Clear-Host
-    Write-Host ""
-    Write-Host "   ▐▛███▜▌    " -NoNewline -ForegroundColor White
-    Write-Host "Epsilon CLI" -ForegroundColor Gray
-    Write-Host "  ▝▜█████▛▘   " -NoNewline -ForegroundColor White
-    Write-Host "Instalator - Windows" -ForegroundColor DarkGray
-    Write-Host "    ▘▘ ▝▝" -ForegroundColor White
-    Write-Host ""
-    Write-Host "  ------------------------------------------------" -ForegroundColor DarkGray
-    Write-Host ""
-}
-
-function Write-Step {
-    param([string]$Text)
-    Write-Host "  > " -NoNewline -ForegroundColor White
-    Write-Host $Text -ForegroundColor Gray
-}
-
-function Write-Ok {
-    param([string]$Text)
-    Write-Host "  + " -NoNewline -ForegroundColor White
-    Write-Host $Text -ForegroundColor Gray
-}
-
-function Write-Fail {
-    param([string]$Text)
-    Write-Host "  ! " -NoNewline -ForegroundColor White
-    Write-Host $Text -ForegroundColor DarkGray
-}
-
-function Get-RemoteFile {
-    param([string]$Url, [string]$Destination)
-
-    $bust = [Guid]::NewGuid().ToString("N")
-    if ($Url.Contains("?")) {
-        $Url = "$Url&t=$bust"
-    } else {
-        $Url = "$Url`?t=$bust"
-    }
-
-    $request = [System.Net.HttpWebRequest]::Create($Url)
-    $request.UserAgent = "EpsilonCLI-Installer"
-    $request.Timeout = 30000
-    $request.CachePolicy = New-Object System.Net.Cache.RequestCachePolicy([System.Net.Cache.RequestCacheLevel]::NoCacheNoStore)
-    $request.Headers.Add("Cache-Control", "no-cache, no-store, must-revalidate")
-    $request.Headers.Add("Pragma", "no-cache")
-    $response = $request.GetResponse()
-    $totalBytes = [double]$response.ContentLength
-    $responseStream = $response.GetResponseStream()
-    $fileStream = [System.IO.File]::Create($Destination)
-
-    $buffer = New-Object byte[] 262144
-    $downloaded = [double]0
-    $barWidth = 30
-    $lastPct = -1
-
-    try {
-        while (($bytesRead = $responseStream.Read($buffer, 0, $buffer.Length)) -gt 0) {
-            $fileStream.Write($buffer, 0, $bytesRead)
-            $downloaded += $bytesRead
-
-            if ($totalBytes -gt 0) {
-                $pct = [int](($downloaded / $totalBytes) * 100)
-                if ($pct -ne $lastPct) {
-                    $lastPct = $pct
-                    $filled = [int](($downloaded / $totalBytes) * $barWidth)
-                    $empty = $barWidth - $filled
-                    Write-Host "`r  [" -NoNewline -ForegroundColor DarkGray
-                    Write-Host ([string]([char]0x2588) * $filled) -NoNewline -ForegroundColor White
-                    Write-Host ([string]([char]0x2591) * $empty) -NoNewline -ForegroundColor DarkGray
-                    Write-Host "] " -NoNewline -ForegroundColor DarkGray
-                    Write-Host ("{0,3}%  {1,5:N1} / {2,5:N1} MB" -f $pct, ($downloaded / 1MB), ($totalBytes / 1MB)) -NoNewline -ForegroundColor Gray
-                }
-            }
-        }
-    } finally {
-        $fileStream.Close()
-        $responseStream.Close()
-        $response.Close()
-    }
-    Write-Host ""
+    Write-Host "  ▐▛███▜▌   Epsilon CLI - Instalator" -ForegroundColor Cyan
+    Write-Host "  ▝▜█████▛▘  System: Windows" -ForegroundColor Cyan
+    Write-Host "    ▘▘ ▝▝" -ForegroundColor Cyan
+    Write-Host "==========================================" -ForegroundColor Gray
 }
 
 Show-Header
 
+# Ustalanie źródła instalacji
 $sourceLocal = $false
 if ($localExePath -and (Test-Path $localExePath)) {
-    Write-Step "Wykryto lokalna kompilacje: $localExePath"
+    Write-Host "[*] Wykryto lokalną kompilację w: $localExePath" -ForegroundColor Yellow
     $sourceLocal = $true
 }
 
+# Tworzenie katalogu docelowego
 if (-not (Test-Path $installDir)) {
-    Write-Step "Tworzenie katalogu: $installDir"
+    Write-Host "[*] Tworzenie katalogu instalacyjnego: $installDir..." -ForegroundColor DarkGray
     New-Item -ItemType Directory -Force -Path $installDir | Out-Null
 }
 
-$procNames = @("epsilon") + $aliases
-$running = Get-Process -Name $procNames -ErrorAction SilentlyContinue
-if ($running) {
-    Write-Step "Zamykanie dzialajacego CLI..."
-    $running | Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Milliseconds 500
-}
-
-$allExe = @($exePath) + ($aliases | ForEach-Object { "$installDir\$_.exe" })
-foreach ($old in $allExe) {
-    if (Test-Path $old) {
-        try {
-            Remove-Item -Path $old -Force -ErrorAction Stop
-        } catch {
-            Write-Fail "Nie mozna usunac starej wersji - zamknij CLI i sprobuj ponownie."
-            exit 1
-        }
-    }
-}
-
+# Kopiowanie lub pobieranie pliku EXE
 if ($sourceLocal) {
-    Write-Step "Kopiowanie lokalnego pliku..."
+    Write-Host "[*] Kopiowanie lokalnego pliku EXE..." -ForegroundColor Yellow
     Copy-Item -Path $localExePath -Destination $exePath -Force
 } else {
-    Write-Step "Pobieranie Epsilon CLI..."
-    Write-Host ""
+    Write-Host "[*] Pobieranie pliku EXE z $downloadUrl..." -ForegroundColor Yellow
     try {
-        Get-RemoteFile -Url $downloadUrl -Destination $exePath
+        Invoke-WebRequest -Uri $downloadUrl -OutFile $exePath -UseBasicParsing
     } catch {
-        Write-Host ""
-        Write-Fail "Blad pobierania pliku!"
-        Write-Fail $_.Exception.Message
+        Write-Host "[-] Błąd pobierania pliku Epsilon CLI!" -ForegroundColor Red
+        Write-Host $_.Exception.Message -ForegroundColor Red
         exit 1
     }
-    Write-Host ""
 }
 
+# Sprawdzenie czy plik istnieje i jest poprawny
 if (Test-Path $exePath) {
     $size = (Get-Item $exePath).Length / 1MB
-    Write-Ok ("Zapisano: $exePath ({0:N2} MB)" -f $size)
+    Write-Host ("`n[+] Pomyślnie zapisano plik: $exePath ({0:N2} MB)" -f $size) -ForegroundColor Green
 } else {
-    Write-Fail "Nie znaleziono pliku epsilon.exe po instalacji!"
+    Write-Host "[-] Krytyczny błąd: Nie znaleziono pliku epsilon.exe po instalacji!" -ForegroundColor Red
     exit 1
 }
 
-Write-Step "Tworzenie komend Claudify..."
+# Tworzenie komend Claudify (te same pliki, inna nazwa = inny brand)
+$aliases = @("claudify", "claudee", "claudi", "claudfy")
+Write-Host "[*] Tworzenie komend Claudify..." -ForegroundColor DarkGray
 foreach ($alias in $aliases) {
     $aliasPath = "$installDir\$alias.exe"
     try {
         Copy-Item -Path $exePath -Destination $aliasPath -Force -ErrorAction Stop
-        Write-Ok "Komenda: $alias"
+        Write-Host "[+] Komenda: $alias" -ForegroundColor Green
     } catch {
-        Write-Fail "Nie mozna utworzyc komendy: $alias"
+        Write-Host "[-] Nie mozna utworzyc komendy: $alias" -ForegroundColor Red
     }
 }
 
-Write-Step "Usuwanie kolidujacych wersji..."
-$npmDir = Join-Path $env:APPDATA "npm"
-$conflicts = @("epsilon", "epsilon.cmd", "epsilon.ps1", "epsilon.bat")
-foreach ($alias in $aliases) {
-    $conflicts += @($alias, "$alias.cmd", "$alias.ps1", "$alias.bat")
-}
-foreach ($name in $conflicts) {
-    $shim = Join-Path $npmDir $name
-    if (Test-Path $shim) {
-        try {
-            Remove-Item -Path $shim -Force -ErrorAction Stop
-            Write-Ok "Usunieto stary skrot npm: $name"
-        } catch {
-            Write-Fail "Nie mozna usunac skrotu: $name"
-        }
-    }
-}
-$npmLink = Join-Path $npmDir "node_modules\epsilon-cli"
-if (Test-Path $npmLink) {
-    try {
-        cmd /c rmdir "$npmLink" 2>$null
-    } catch {}
-}
-
-Write-Step "Konfiguracja PATH..."
+# Dodawanie do PATH
+Write-Host "[*] Konfiguracja zmiennych środowiskowych PATH..." -ForegroundColor DarkGray
 $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
-$target = $installDir.TrimEnd('\')
-$parts = @($userPath -split ';' | Where-Object { $_ -and ($_.TrimEnd('\') -ne $target) })
-$newPath = (@($installDir) + $parts) -join ';'
-[Environment]::SetEnvironmentVariable("PATH", $newPath, "User")
-$env:PATH = "$installDir;$env:PATH"
-Write-Ok "Ustawiono $installDir na poczatku PATH."
+if ($userPath -notlike "*$installDir*") {
+    $newPath = $userPath
+    if (-not $newPath.EndsWith(';')) {
+        $newPath += ';'
+    }
+    $newPath += $installDir
+    [Environment]::SetEnvironmentVariable("PATH", $newPath, "User")
+    # Aktualizacja PATH dla bieżącej sesji PowerShell
+    $env:PATH = "$env:PATH;$installDir"
+    Write-Host "[+] Dodano $installDir do PATH użytkownika." -ForegroundColor Green
+} else {
+    Write-Host "[*] Ścieżka $installDir jest już obecna w PATH." -ForegroundColor DarkGray
+}
 
+Write-Host "==========================================" -ForegroundColor Gray
+Write-Host "[+] Epsilon CLI został pomyślnie zainstalowany!" -ForegroundColor Green
 Write-Host ""
-Write-Host "  ------------------------------------------------" -ForegroundColor DarkGray
+Write-Host "    Aby zacząć korzystać, otwórz NOWY terminal i wpisz:" -ForegroundColor Cyan
+Write-Host "    epsilon" -ForegroundColor Yellow -NoNewline
+Write-Host " lub " -ForegroundColor White -NoNewline
+Write-Host "epsilon settings" -ForegroundColor Yellow
 Write-Host ""
-Write-Host "  + " -NoNewline -ForegroundColor White
-Write-Host "Epsilon CLI zainstalowany pomyslnie!" -ForegroundColor Gray
+Write-Host "    Wersja Claudify: " -ForegroundColor White -NoNewline
+Write-Host "claudify" -ForegroundColor Yellow -NoNewline
+Write-Host " (takze claudee, claudi, claudfy)" -ForegroundColor White
 Write-Host ""
-Write-Host "    Otworz NOWY terminal i wpisz:" -ForegroundColor DarkGray
-Write-Host "      epsilon" -NoNewline -ForegroundColor White
-Write-Host "  lub  " -NoNewline -ForegroundColor DarkGray
-Write-Host "epsilon settings" -ForegroundColor White
-Write-Host ""
-Write-Host "    Wersja Claudify (osobne konto i providery):" -ForegroundColor DarkGray
-Write-Host "      claudify" -NoNewline -ForegroundColor White
-Write-Host "  (takze: " -NoNewline -ForegroundColor DarkGray
-Write-Host "claudee, claudi, claudfy" -NoNewline -ForegroundColor White
-Write-Host ")" -ForegroundColor DarkGray
-Write-Host ""
+Write-Host "==========================================" -ForegroundColor Gray
